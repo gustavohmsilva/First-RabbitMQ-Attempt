@@ -3,56 +3,66 @@ package config
 import (
 	"fmt"
 	"os"
+
+	"github.com/streadway/amqp"
 )
 
-// RabbitMQ hold the configuration for a RabbitMQ connection
-type RabbitMQ struct {
-	User   string
-	Pass   string
-	server string
-	port   string
-	Err    error
+// MessageSource is the struct containing the connection to the message service
+type MessageSource struct {
+	Server *amqp.Connection
 }
 
-// NewRabbitMQ fetch the RabbitMQ configuration from system variables or create
-// a dummy configuration for local environment.
-func NewRabbitMQ(testing bool) RabbitMQ {
-	if !testing {
-		return RabbitMQ{"guest", "guest", "localhost", "5672", nil}
+// ConnectionInfo hold the configuration for a RabbitMQ connection
+type ConnectionInfo struct {
+	User    string
+	Pass    string
+	Address string
+	port    string
+	Err     error
+}
+
+// NewMessageSource create a new RabbitMQ server object to deliver messages to
+func NewMessageSource(prod bool) (MessageSource, error) {
+	if !prod {
+		conn, err := amqp.Dial("amqp://guest:guest@localhost:5672")
+		if err != nil {
+			return MessageSource{}, err
+		}
+		var src MessageSource
+		src.Server = conn
+		return src, nil
 	}
-	var c RabbitMQ
 	errorMsgTemplate := "Missing RabbitMQ %s System Variable"
+	var c ConnectionInfo
 	if c.User = os.Getenv("RABBITMQ_USER"); c.User == "" {
 		c.Err = fmt.Errorf(fmt.Sprintf(errorMsgTemplate, "User"))
-		return c
+		return MessageSource{}, c.Err
 	}
 	if c.User = os.Getenv("RABBITMQ_PASS"); c.User == "" {
 		c.Err = fmt.Errorf(fmt.Sprintf(errorMsgTemplate, "Pass"))
-		return c
+		return MessageSource{}, c.Err
 	}
 	if c.User = os.Getenv("RABBITMQ_SERVER"); c.User == "" {
 		c.Err = fmt.Errorf(fmt.Sprintf(errorMsgTemplate, "Server"))
-		return c
+		return MessageSource{}, c.Err
 	}
 	if c.User = os.Getenv("RABBITMQ_PORT"); c.User == "" {
 		c.Err = fmt.Errorf(fmt.Sprintf(errorMsgTemplate, "Port"))
-		return c
+		return MessageSource{}, c.Err
 	}
-	return c
-}
-
-// ParseConnectionString create a string used in amqp.Dial from a RabbitMQ
-// configuration struct
-func (c *RabbitMQ) ParseConnectionString() (string, error) {
-	if c.Err != nil {
-		return "", c.Err
-	}
-	connectionString := fmt.Sprintf(
-		"amqp://%s:%s@%s:%s/",
-		c.User,
-		c.Pass,
-		c.server,
-		c.port,
+	conn, err := amqp.Dial(
+		fmt.Sprintf(
+			"amqp://%s:%s@%s:%s",
+			c.User,
+			c.Pass,
+			c.Address,
+			c.port,
+		),
 	)
-	return connectionString, nil
+	if err != nil {
+		return MessageSource{}, err
+	}
+	var src MessageSource
+	src.Server = conn
+	return src, nil
 }
